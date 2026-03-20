@@ -15,13 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch upstream SHA
+      - name: Fetch upstream SHA and content
         id: upstream
         run: |
-          SHA=$(curl -sf \
+          RESPONSE=$(curl -sf \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/karpathy/autoresearch/contents/program.md" \
-            | jq -r '.sha')
+            "https://api.github.com/repos/karpathy/autoresearch/contents/program.md")
+          SHA=$(echo "$RESPONSE" | jq -r '.sha')
+          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.download_url')
+          curl -sf "$DOWNLOAD_URL" > /tmp/upstream-program.md
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Read stored SHA
@@ -34,31 +36,44 @@ jobs:
             echo "sha=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open issue if changed
+      - name: Generate diff and open issue
         if: steps.upstream.outputs.sha != steps.stored.outputs.sha
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: 'upstream: karpathy/autoresearch program.md has changed',
-              body: [
-                '`program.md` in [karpathy/autoresearch](https://github.com/karpathy/autoresearch) has been updated.',
-                '',
-                '**Action required:** review the diff at https://github.com/karpathy/autoresearch/commits/master/program.md',
-                'and port any relevant improvements to `app/services/autoresearcher_program.md`.',
-                '',
-                `New SHA: \`${{ steps.upstream.outputs.sha }}\``,
-              ].join('\n')
-            })
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OLD_FILE=".github/upstream-program-md.txt"
+          if [ -f "$OLD_FILE" ]; then
+            DIFF=$(diff -u "$OLD_FILE" /tmp/upstream-program.md || true)
+          else
+            DIFF="(no previous content stored — first change detected)"
+          fi
 
-      - name: Update stored SHA
+          BODY=$(cat <<EOF
+          \`program.md\` in [karpathy/autoresearch](https://github.com/karpathy/autoresearch) has been updated.
+
+          **Action required:** review the diff below and port any relevant improvements to \`app/services/autoresearcher_program.md\`.
+
+          New SHA: \`${{ steps.upstream.outputs.sha }}\`
+
+          ---
+
+          \`\`\`diff
+          ${DIFF}
+          \`\`\`
+          EOF
+          )
+
+          gh issue create \
+            --title "upstream: karpathy/autoresearch program.md has changed" \
+            --body "$BODY"
+
+      - name: Update stored SHA and content
         if: steps.upstream.outputs.sha != steps.stored.outputs.sha
         run: |
           echo "${{ steps.upstream.outputs.sha }}" > .github/upstream-program-md.sha
+          cp /tmp/upstream-program.md .github/upstream-program-md.txt
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/upstream-program-md.sha
-          git commit -m "chore: update upstream program.md SHA to ${{ steps.upstream.outputs.sha }}"
+          git add .github/upstream-program-md.sha .github/upstream-program-md.txt
+          git commit -m "chore: update upstream program.md snapshot to ${{ steps.upstream.outputs.sha }}"
           git push

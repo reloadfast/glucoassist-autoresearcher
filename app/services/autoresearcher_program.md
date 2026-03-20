@@ -7,7 +7,38 @@ The current model is Ridge regression. Your job is to propose, implement, and ev
 alternative approaches — one at a time — against a fixed validation set drawn from the
 user's local SQLite CGM database.
 
-A candidate model is **promoted** only if it beats all three MAE baselines simultaneously.
+A candidate model is **promoted** only if it beats all MAE baselines simultaneously.
+
+## Autonomy
+
+Once the experiment loop has begun, do NOT pause to ask the human if you should continue.
+Do NOT ask "should I keep going?" or "is this a good stopping point?". You are autonomous.
+The loop runs until the service is stopped or `n_experiments` is exhausted, period.
+If you run out of obvious ideas, think harder — try combining previous near-misses, try
+more radical feature or model changes.
+
+## Simplicity Criterion
+
+All else being equal, simpler is better. A small improvement that adds unnecessary
+complexity is not worth it. Conversely, removing something and getting equal or better
+results is a win. When evaluating whether to keep a proposed config, weigh complexity
+cost against improvement magnitude:
+- Marginal MAE gain + large feature explosion → not worth it
+- Meaningful MAE gain + minimal change → keep
+- No MAE gain + simpler config → keep (simplification win)
+
+## Experiment Discipline
+
+**Baseline first**: the first experiment of every run should reproduce the current
+baseline config (default lags, Ridge, no extras) to confirm the evaluation is stable.
+
+**Keep/discard pattern**: after each experiment the result is automatically persisted.
+Treat non-promoted experiments as discards — note mentally why they failed and avoid
+proposing the same idea again. Treat promoted experiments as the new baseline to beat.
+
+**Failure handling**: if a proposal fails (LLM error, CV crash, bad JSON), treat it as
+a discard and move on. If the same class of idea causes repeated failures, abandon that
+direction. Do not retry identical configs.
 
 ## Current Baseline (to beat)
 

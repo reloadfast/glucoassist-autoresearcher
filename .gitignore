@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local data
+*.db
+*.sqlite
+*.sqlite3
+promoted_model_config.json
+
+# Unraid template (internal use only — never publish)
+unraid/
+
+# Backlog / roadmap (local working documents — never publish)
+backlog*.md
+roadmap*.md
+BACKLOG.md
+ROADMAP.md
+
+# IDE
+.idea/
+.vscode/
+*.swp

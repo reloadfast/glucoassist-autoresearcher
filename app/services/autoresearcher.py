@@ -202,7 +202,7 @@ def _walk_forward_cv(feats, model_config: dict) -> dict[str, float]:
     return {h: float(np.mean(v)) if v else float("inf") for h, v in all_maes.items()}
 
 
-def _propose_experiment(program_md, research_log, ollama_url, ollama_model) -> dict:
+def _propose_experiment(program_md, research_log, ollama_url, ollama_model, ollama_api_key="") -> dict:
     log_summary = json.dumps(research_log[-5:], indent=2) if research_log else "[]"
     prompt = (
         "You are running the GlucoAssist forecast research loop.\n\n"
@@ -214,8 +214,12 @@ def _propose_experiment(program_md, research_log, ollama_url, ollama_model) -> d
         '  "model_config": {"algorithm": "ridge"|"lightgbm", "alpha": 1.0, "n_estimators": 200, "learning_rate": 0.05, "num_leaves": 31}'
     )
     try:
+        headers: dict = {"Content-Type": "application/json"}
+        if ollama_api_key:
+            headers["Authorization"] = f"Bearer {ollama_api_key}"
         resp = requests.post(
             ollama_url.rstrip("/") + "/api/generate",
+            headers=headers,
             json={"model": ollama_model, "prompt": prompt, "format": "json", "stream": False, "think": False},
             timeout=120,
         )
@@ -312,7 +316,8 @@ def get_default_program_md() -> str:
 
 def _run_loop(
     db_path, n_experiments, ollama_url, ollama_model, run_id, program_md,
-    llm_provider="ollama", openai_url="", openai_api_key="", openai_model="gpt-4o",
+    llm_provider="ollama", ollama_api_key="",
+    openai_url="", openai_api_key="", openai_model="gpt-4o",
 ) -> None:
     global _state  # noqa: PLW0603
 
@@ -358,7 +363,7 @@ def _run_loop(
                 if llm_provider == "openai_compatible":
                     proposal = _propose_experiment_openai(program_md, prior_log, openai_url, openai_api_key, openai_model)
                 else:
-                    proposal = _propose_experiment(program_md, prior_log, ollama_url, ollama_model)
+                    proposal = _propose_experiment(program_md, prior_log, ollama_url, ollama_model, ollama_api_key)
             except LLMUnreachableError as exc:
                 with _lock:
                     _state.state = "error"
@@ -424,7 +429,7 @@ def _run_loop(
 
 def start_run(
     db_path, n_experiments, ollama_url, ollama_model,
-    program_md=None, llm_provider="ollama",
+    program_md=None, llm_provider="ollama", ollama_api_key="",
     openai_url="", openai_api_key="", openai_model="gpt-4o",
 ) -> str:
     """Start a research run in a background thread. Raises RuntimeError if already running."""
@@ -446,8 +451,8 @@ def start_run(
         try:
             _run_loop(
                 db_path, n_experiments, ollama_url, ollama_model, run_id, program_md,
-                llm_provider=llm_provider, openai_url=openai_url,
-                openai_api_key=openai_api_key, openai_model=openai_model,
+                llm_provider=llm_provider, ollama_api_key=ollama_api_key,
+                openai_url=openai_url, openai_api_key=openai_api_key, openai_model=openai_model,
             )
         finally:
             _thread_lock.release()

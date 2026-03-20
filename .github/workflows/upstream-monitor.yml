@@ -1,0 +1,64 @@
+name: Monitor upstream program.md
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # every Monday at 09:00 UTC
+  workflow_dispatch:       # allow manual trigger
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch upstream SHA
+        id: upstream
+        run: |
+          SHA=$(curl -sf \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/karpathy/autoresearch/contents/program.md" \
+            | jq -r '.sha')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Read stored SHA
+        id: stored
+        run: |
+          FILE=".github/upstream-program-md.sha"
+          if [ -f "$FILE" ]; then
+            echo "sha=$(cat $FILE)" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open issue if changed
+        if: steps.upstream.outputs.sha != steps.stored.outputs.sha
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'upstream: karpathy/autoresearch program.md has changed',
+              body: [
+                '`program.md` in [karpathy/autoresearch](https://github.com/karpathy/autoresearch) has been updated.',
+                '',
+                '**Action required:** review the diff at https://github.com/karpathy/autoresearch/commits/master/program.md',
+                'and port any relevant improvements to `app/services/autoresearcher_program.md`.',
+                '',
+                `New SHA: \`${{ steps.upstream.outputs.sha }}\``,
+              ].join('\n')
+            })
+
+      - name: Update stored SHA
+        if: steps.upstream.outputs.sha != steps.stored.outputs.sha
+        run: |
+          echo "${{ steps.upstream.outputs.sha }}" > .github/upstream-program-md.sha
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/upstream-program-md.sha
+          git commit -m "chore: update upstream program.md SHA to ${{ steps.upstream.outputs.sha }}"
+          git push

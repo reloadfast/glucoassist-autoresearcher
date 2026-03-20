@@ -37,6 +37,59 @@ services:
       DATABASE_PATH: /data/glucoassist.db
 ```
 
+## Deploying
+
+### Publishing a new image (GHCR)
+
+Images are hosted on the GitHub Container Registry — no Docker Hub required. The
+`release.yml` workflow builds and pushes automatically when you tag a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This publishes both `ghcr.io/reloadfast/glucoassist-autoresearcher:v0.1.0` and `:latest`.
+
+### Keeping the image up to date
+
+Use [Watchtower](https://containrrr.dev/watchtower/) to pull new releases automatically:
+
+```yaml
+watchtower:
+  image: containrrr/watchtower
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+  command: --interval 86400 glucoassist autoresearcher
+```
+
+### Unraid setup
+
+The autoresearcher is a second container alongside GlucoAssist — it is not part of the
+main Community Applications template. Add it manually in Unraid's Docker UI:
+
+| Setting | Value |
+|---|---|
+| Image | `ghcr.io/reloadfast/glucoassist-autoresearcher:latest` |
+| Network | Same as GlucoAssist (e.g. `bridge` or a custom network) |
+| Port | `8001` — internal only; GlucoAssist talks to it directly, no host exposure needed |
+| Volume | `/data` → same host path as GlucoAssist's `/data` volume |
+| Env vars | None required — LLM config is stored in the shared DB by GlucoAssist |
+
+Then add one environment variable to your **GlucoAssist** container:
+
+```
+AUTORESEARCHER_URL=http://<autoresearcher-container-ip>:8001
+```
+
+### Wiring it up
+
+1. Start both containers.
+2. In GlucoAssist, go to **Settings → Research Service**.
+3. Configure your LLM provider (Ollama or OpenAI-compatible), endpoint, and model.
+4. Click **Test Connection** — you should see `✓ Connected — sidecar v0.1.0`.
+5. Open the **Research** page and click **Run Now** to start your first experiment.
+
 ## API
 
 | Method | Path | Description |
@@ -52,21 +105,22 @@ services:
 ```json
 {
   "n_experiments": 10,
-  "program_md": "...",
-  "llm_provider": "ollama",
-  "ollama_url": "http://localhost:11434",
-  "ollama_model": "llama3.1:8b",
-  "openai_url": "",
-  "openai_api_key": "",
-  "openai_model": "gpt-4o"
+  "llm_type": "ollama",
+  "llm_endpoint": "http://ollama:11434",
+  "llm_model": "llama3.1:8b",
+  "llm_api_key": null,
+  "program_md": "# Optional — omit to use the bundled default"
 }
 ```
 
 ## LLM backends
 
-- **Ollama (local)**: `llm_provider=ollama`
-- **OpenAI-compatible**: `llm_provider=openai_compatible` — works with OpenAI, Anthropic
-  (via proxy), Google Gemini, vLLM, LiteLLM, and others.
+- **Ollama (local)**: `llm_type=ollama` — requires Ollama reachable from the container.
+- **OpenAI-compatible**: `llm_type=openai_compatible` — works with OpenAI, vLLM, LiteLLM,
+  and any endpoint implementing `/v1/chat/completions`.
+
+LLM credentials are stored encrypted in the shared database by GlucoAssist and passed in
+the `/api/run` body — they are never stored in environment variables.
 
 ## Environment variables
 
@@ -76,5 +130,7 @@ services:
 
 ## Compatibility
 
-GlucoAssist checks `GET /api/version` on every connection. See GlucoAssist release notes
-for the minimum compatible version of this service.
+GlucoAssist checks `GET /api/version` on every connection and warns if the sidecar version
+is below `AUTORESEARCHER_MIN_VERSION`. See
+[docs/autoresearcher.md](https://github.com/reloadfast/glucoassist/blob/main/docs/autoresearcher.md)
+in the main repo for the compatibility matrix, upgrade checklist, and rollback instructions.

@@ -83,6 +83,7 @@ class RunRequest(BaseModel):
     llm_provider: str = "ollama"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+    ollama_api_key: str = ""  # Bearer token for authenticated Ollama proxies (e.g. Helios)
     openai_url: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
@@ -97,6 +98,7 @@ def start_run(body: RunRequest) -> dict:
             n_experiments=body.n_experiments,
             ollama_url=body.ollama_url,
             ollama_model=body.ollama_model,
+            ollama_api_key=body.ollama_api_key,
             program_md=body.program_md,
             llm_provider=body.llm_provider,
             openai_url=body.openai_url,
